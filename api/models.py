@@ -16,6 +16,7 @@ class Connection(models.Model):
     ssh_pass = models.BinaryField(blank=False)
     ssh_host = models.CharField(max_length=30)
     ssh_port = models.IntegerField()
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -28,6 +29,7 @@ class Source(models.Model):
     title = models.CharField(max_length=30)
     file_path= models.CharField(max_length=100, blank=False, null=False)
     connection  = models.ForeignKey(Connection,on_delete=models.CASCADE, related_name='connections',)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
