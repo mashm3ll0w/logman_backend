@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.models import LogmanUser
-from accounts.permissions import IsSuperAdmin
+from accounts.permissions import IsSuperAdminOrReadOnly
 from accounts.serializers import (
     UserSerializer,
     ProfileSerializer,
@@ -25,7 +25,8 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('me', 'change_password'):
             return [IsAuthenticated()]
-        return [IsSuperAdmin()]
+        # Everyone authenticated may view users; only super admins may manage them.
+        return [IsSuperAdminOrReadOnly()]
 
     @action(detail=False, methods=['get', 'patch'], url_path='me')
     def me(self, request):
