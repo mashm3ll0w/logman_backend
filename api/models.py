@@ -10,10 +10,21 @@ class Organization(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
 class Connection(models.Model):
-    
+
+    class AuthMethod(models.TextChoices):
+        PASSWORD = 'password', 'Password'
+        KEY = 'key', 'SSH Key'
+
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     ssh_user = models.CharField(max_length=30)
-    ssh_pass = models.BinaryField(blank=False)
+    auth_method = models.CharField(
+        max_length=10, choices=AuthMethod.choices, default=AuthMethod.PASSWORD
+    )
+    # Secrets are stored Fernet-encrypted. Only one of password / key is used,
+    # depending on auth_method; both are optional at the DB level.
+    ssh_pass = models.BinaryField(null=True, blank=True)
+    ssh_key = models.BinaryField(null=True, blank=True)
+    ssh_key_passphrase = models.BinaryField(null=True, blank=True)
     ssh_host = models.CharField(max_length=30)
     ssh_port = models.IntegerField()
     is_active = models.BooleanField(default=True)

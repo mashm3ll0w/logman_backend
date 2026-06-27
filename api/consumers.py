@@ -1,12 +1,23 @@
 import json
 import asyncio
+from io import StringIO
 from channels.generic.websocket import AsyncWebsocketConsumer
 import paramiko
 import time
-from asgiref.sync import sync_to_async 
+from asgiref.sync import sync_to_async
 from api.utils.crypt import cipher_suite
 
 from api.models import Connection, Source
+
+
+def load_private_key(key_str, passphrase=None):
+    """Load a private key string into a paramiko PKey, trying each key type."""
+    for key_cls in (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey, paramiko.DSSKey):
+        try:
+            return key_cls.from_private_key(StringIO(key_str), password=passphrase)
+        except paramiko.SSHException:
+            continue
+    raise paramiko.SSHException('Unsupported or invalid private key')
 class LogConsumer(AsyncWebsocketConsumer):
     task = None
     data = None
@@ -41,15 +52,26 @@ class LogConsumer(AsyncWebsocketConsumer):
             hostname = source.connection.ssh_host
             port = source.connection.ssh_port
             username = source.connection.ssh_user
-            password = source.connection.ssh_pass
-            
+
             if lines > 0 and lines < 1000:
                 command = (f'tail -f {source.file_path} -n {lines}')
             else:
                 command = (f'tail -f {source.file_path}')
 
 
-            ssh.connect(hostname, port=port, username=username, password=password, look_for_keys=False)
+            if source.connection.auth_method == Connection.AuthMethod.KEY:
+                pkey = load_private_key(
+                    source.connection.ssh_key, source.connection.ssh_key_passphrase
+                )
+                ssh.connect(
+                    hostname, port=port, username=username, pkey=pkey,
+                    look_for_keys=False, allow_agent=False,
+                )
+            else:
+                ssh.connect(
+                    hostname, port=port, username=username,
+                    password=source.connection.ssh_pass, look_for_keys=False,
+                )
             stdin, stdout, stderr = ssh.exec_command(command, get_pty=True)
             try:
 
@@ -84,8 +106,14 @@ class LogConsumer(AsyncWebsocketConsumer):
         lines = text_data_json["lines"]
         # get object with specifi id
         source = await self.get_source_object(source_id)
-        # decode password
-        source.connection.ssh_pass = await self.decode_password(source.connection.ssh_pass)
+        # decrypt the secret for the connection's auth method
+        if source.connection.auth_method == Connection.AuthMethod.KEY:
+            source.connection.ssh_key = await self.decode_secret(source.connection.ssh_key)
+            source.connection.ssh_key_passphrase = await self.decode_secret(
+                source.connection.ssh_key_passphrase
+            )
+        else:
+            source.connection.ssh_pass = await self.decode_secret(source.connection.ssh_pass)
         # send logs
         self.data = None
         self.task = asyncio.create_task(self.send_message_every_second(source, int(lines)))
@@ -103,9 +131,11 @@ class LogConsumer(AsyncWebsocketConsumer):
         
         except Connection.DoesNotExist:
             return None
-    async def decode_password(self, encoded_pass):
+    async def decode_secret(self, encoded):
+        if not encoded:
+            return None
         try:
-            plain = (cipher_suite().decrypt(bytes(encoded_pass)))
+            plain = (cipher_suite().decrypt(bytes(encoded)))
             return plain.decode()
         except Exception as e:
              pass

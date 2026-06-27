@@ -57,22 +57,36 @@ class Connections(ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         ssh_pass = request.data.get('ssh_pass')
+        ssh_key = request.data.get('ssh_key')
+        ssh_key_passphrase = request.data.get('ssh_key_passphrase')
         ssh_user = request.data.get('ssh_user')
         ssh_host = request.data.get('ssh_host')
+        auth_method = request.data.get('auth_method', Connection.AuthMethod.PASSWORD)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        if not ssh_pass:
+
+        if auth_method == Connection.AuthMethod.KEY:
+            if not ssh_key:
+                return Response({'error': 'an SSH private key is required'}, status=status.HTTP_400_BAD_REQUEST)
+        elif not ssh_pass:
             return Response({'error': 'ssh password is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # no host should have the same password & username
+        # no host should have the same username
         existing_connections = Connection.objects.filter(ssh_host=ssh_host, ssh_user=ssh_user)
         if existing_connections.exists():
             return Response({'error': 'Connection exists!'}, status=status.HTTP_409_CONFLICT)
 
         instance = serializer.save()
-        instance.ssh_pass = cipher_suite().encrypt(ssh_pass.encode())
-        instance.save(update_fields=['ssh_pass'])
+        cipher = cipher_suite()
+        if auth_method == Connection.AuthMethod.KEY:
+            instance.ssh_key = cipher.encrypt(ssh_key.encode())
+            if ssh_key_passphrase:
+                instance.ssh_key_passphrase = cipher.encrypt(ssh_key_passphrase.encode())
+            instance.save(update_fields=['ssh_key', 'ssh_key_passphrase'])
+        else:
+            instance.ssh_pass = cipher.encrypt(ssh_pass.encode())
+            instance.save(update_fields=['ssh_pass'])
         return Response(ConnectionSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
@@ -89,12 +103,40 @@ class ConnectionDetail(RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        instance = serializer.save()
 
+        cipher = cipher_suite()
         ssh_pass = request.data.get('ssh_pass')
+        ssh_key = request.data.get('ssh_key')
+        ssh_key_passphrase = request.data.get('ssh_key_passphrase')
+
+        update_fields = []
         if ssh_pass:
-            instance.ssh_pass = cipher_suite().encrypt(ssh_pass.encode())
-            instance.save(update_fields=['ssh_pass'])
+            instance.ssh_pass = cipher.encrypt(ssh_pass.encode())
+            update_fields.append('ssh_pass')
+        if ssh_key:
+            instance.ssh_key = cipher.encrypt(ssh_key.encode())
+            update_fields.append('ssh_key')
+        if ssh_key_passphrase is not None:
+            instance.ssh_key_passphrase = (
+                cipher.encrypt(ssh_key_passphrase.encode()) if ssh_key_passphrase else None
+            )
+            update_fields.append('ssh_key_passphrase')
+
+        # Drop the now-unused secret when switching auth method so stale
+        # credentials are not left behind.
+        if instance.auth_method == Connection.AuthMethod.KEY:
+            if instance.ssh_pass is not None:
+                instance.ssh_pass = None
+                update_fields.append('ssh_pass')
+        else:
+            if instance.ssh_key is not None or instance.ssh_key_passphrase is not None:
+                instance.ssh_key = None
+                instance.ssh_key_passphrase = None
+                update_fields += ['ssh_key', 'ssh_key_passphrase']
+
+        if update_fields:
+            instance.save(update_fields=list(set(update_fields)))
 
         return Response(ConnectionSerializer(instance).data)
 

@@ -8,7 +8,7 @@ from api.utils.generators import generate_code
 class ConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Connection
-        fields = ['ssh_user','ssh_host','ssh_port','is_active','id','created_at','modified_at']
+        fields = ['ssh_user','ssh_host','ssh_port','auth_method','is_active','id','created_at','modified_at']
 
     def to_representation(self, instance):
         representation = super(ConnectionSerializer, self).to_representation(instance)
