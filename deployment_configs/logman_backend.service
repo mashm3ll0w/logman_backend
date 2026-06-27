@@ -1,0 +1,12 @@
+[Unit]
+Description=Logman backend daemon
+After=network.target
+
+[Service]
+User=devops
+WorkingDirectory=/your/app/path/logman_backend
+ExecStart=/your/app/path/logman_backend/venv/bin/daphne -b 127.0.0.1 -p 8000 core.asgi:application
+
+
+[Install]
+WantedBy=multi-user.target
