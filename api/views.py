@@ -2,6 +2,7 @@ from .models import Connection, Source
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from .serializers import ConnectionSerializer, OrganizationSerializer, SourceSerializer
 from rest_framework.permissions import IsAuthenticated
+from .permissions import IsSuperUserOrReadOnly
 from api.models import Organization
 from rest_framework import viewsets
 from api.utils.crypt import cipher_suite
@@ -11,7 +12,7 @@ from rest_framework import status
 
 class Sources(ListCreateAPIView):
     """List all sources / create a new source."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSuperUserOrReadOnly]
     queryset = Source.objects.all().select_related('connection').order_by('-created_at')
     serializer_class = SourceSerializer
 
@@ -34,7 +35,7 @@ class Sources(ListCreateAPIView):
 
 class SourceDetail(RetrieveUpdateDestroyAPIView):
     """Retrieve / edit (incl. file_path) / disable / delete a single source."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSuperUserOrReadOnly]
     queryset = Source.objects.all().select_related('connection')
     serializer_class = SourceSerializer
     lookup_field = 'id'
@@ -50,7 +51,7 @@ class SourceDetail(RetrieveUpdateDestroyAPIView):
 
 class Connections(ListCreateAPIView):
     """List all connections / create a new connection (password is encrypted)."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSuperUserOrReadOnly]
     queryset = Connection.objects.all().order_by('-created_at')
     serializer_class = ConnectionSerializer
 
@@ -78,7 +79,7 @@ class Connections(ListCreateAPIView):
 class ConnectionDetail(RetrieveUpdateDestroyAPIView):
     """Retrieve / edit / disable / delete a single connection. The ssh password is
     only re-encrypted and stored when a new (non-empty) value is supplied."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSuperUserOrReadOnly]
     queryset = Connection.objects.all()
     serializer_class = ConnectionSerializer
     lookup_field = 'id'
